@@ -1,15 +1,26 @@
+"use client";
+
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
+// Această funcție nu permite accesul utilizatorilor neautentificați la aceste rute
 export default clerkMiddleware((auth, request) => {
-  if (!isPublicRoute(request)) {
-    auth().protect()
+  const isPublic = isPublicRoute(request);
 
+  if (!isPublic) {
+    auth().protect();
   }
 })
 
-
-
-const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)', '/test', '/api/uploadthing', '/api/webhook'])
+// Adăugăm mai multe rute publice, inclusiv webhook și rute de curs
+const isPublicRoute = createRouteMatcher([
+  '/sign-in(.*)', 
+  '/sign-up(.*)', 
+  '/test', 
+  '/api/uploadthing', 
+  '/api/webhook',
+  '/api/courses(.*)',
+  '/courses/(.*)'
+])
 
 export const config = {
   matcher: [

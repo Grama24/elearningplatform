@@ -17,14 +17,35 @@ const handleAuth = () => {
 
 export const ourFileRouter = {
   courseImage: f({ image: { maxFileSize: "4MB", maxFileCount: 1 } })
-    .middleware(() => handleAuth())
-    .onUploadComplete(() => { }),
+    .middleware(() => {
+      console.log("[UPLOADTHING] Începe upload imagine curs");
+      return handleAuth();
+    })
+    .onUploadComplete(({ metadata, file }) => {
+      console.log("[UPLOADTHING] Upload imagine curs finalizat:", file.url);
+    }),
   courseAttachment: f(["text", "image", "video", "audio", "pdf"])
-    .middleware(() => handleAuth())
-    .onUploadComplete(() => { }),
+    .middleware(() => {
+      console.log("[UPLOADTHING] Începe upload atașament curs");
+      return handleAuth();
+    })
+    .onUploadComplete(({ metadata, file }) => {
+      console.log("[UPLOADTHING] Upload atașament curs finalizat:", file.url);
+    }),
   chapterVideo: f({ video: { maxFileCount: 1, maxFileSize: "512GB" } })
-    .middleware(() => handleAuth())
-    .onUploadComplete(() => { })
+    .middleware(() => {
+      console.log("[UPLOADTHING] Începe upload video capitol");
+      return handleAuth();
+    })
+    .onUploadComplete(({ metadata, file }) => {
+      console.log("[UPLOADTHING] Upload video capitol finalizat:", file.url);
+      console.log("[UPLOADTHING] Detalii fișier:", {
+        name: file.name,
+        size: file.size,
+        key: file.key,
+        url: file.url
+      });
+    })
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

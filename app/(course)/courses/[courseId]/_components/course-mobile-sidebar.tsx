@@ -1,9 +1,8 @@
-import { Menu } from "lucide-react";
+import { db } from "@/lib/db";
+import { auth } from "@clerk/nextjs/server";
 import { Chapter, Course, UserProgress } from "@prisma/client";
-
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-
-import CourseSideBar from "./course-sidebar";
+import { redirect } from "next/navigation";
+import { CourseMobileSidebarClient } from "./course-mobile-sidebar-client";
 
 interface CourseMobileSidebarProps {
   course: Course & {
@@ -14,18 +13,32 @@ interface CourseMobileSidebarProps {
   progressCount: number;
 }
 
-export const CourseMobileSidebar = ({
+export const CourseMobileSidebar = async ({
   course,
   progressCount,
 }: CourseMobileSidebarProps) => {
+  const { userId } = auth();
+
+  if (!userId) {
+    return redirect("/");
+  }
+
+  const purchase = await db.purchase.findUnique({
+    where: {
+      userId_courseId: {
+        userId,
+        courseId: course.id,
+      },
+    },
+  });
+
+  const isPurchased = !!purchase;
+
   return (
-    <Sheet>
-      <SheetTrigger className="md:hidden pr-4 hover:opacity-75 transition">
-        <Menu />
-      </SheetTrigger>
-      <SheetContent side="left" className="p-0 bg-white w-72">
-        <CourseSideBar course={course} progressCount={progressCount} />
-      </SheetContent>
-    </Sheet>
+    <CourseMobileSidebarClient
+      course={course}
+      progressCount={progressCount}
+      isPurchased={isPurchased}
+    />
   );
 };

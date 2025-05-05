@@ -6,7 +6,7 @@
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  previewFeatures = ["fullTextIndex"]
 }
 
 datasource db {
@@ -26,11 +26,12 @@ model Course {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
 
-  attachments Attachment[]
-  purchases   Purchase[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  chapters    Chapter[]
+  attachments  Attachment[]
+  purchases    Purchase[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  chapters     Chapter[]
+  certificates Certificate[]
 
   @@index([categoryId])
   @@fulltext([title])
@@ -124,4 +125,19 @@ model StripeCustomer {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Certificate {
+  id           String   @id @default(uuid()) @map("_id")
+  courseId     String
+  userId       String
+  courseName   String
+  categoryName String?
+  blockchainTx String?
+  issuedAt     DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([userId])
 }

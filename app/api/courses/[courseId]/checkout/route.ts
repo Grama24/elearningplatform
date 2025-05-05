@@ -10,8 +10,10 @@ export async function POST(
 ) {
   try {
     const user = await currentUser();
+    console.log("[CHECKOUT] User:", user?.id);
 
     if (!user || !user.id || !user.emailAddresses?.[0]?.emailAddress) {
+      console.log("[CHECKOUT] Unauthorized - Missing user data");
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
@@ -21,6 +23,13 @@ export async function POST(
         isPublished: true,
       }
     });
+
+    console.log("[CHECKOUT] Course:", course?.id);
+
+    if (!course) {
+      console.log("[CHECKOUT] Course not found");
+      return new NextResponse("Not found", { status: 404 })
+    }
 
     const purchase = await db.purchase.findUnique({
       where: {
@@ -32,11 +41,8 @@ export async function POST(
     });
 
     if (purchase) {
+      console.log("[CHECKOUT] Already purchased");
       return new NextResponse("Already purchased", { status: 400 })
-    }
-
-    if (!course) {
-      return new NextResponse("Not found", { status: 404 })
     }
 
     const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = [
@@ -53,6 +59,8 @@ export async function POST(
       }
     ];
 
+    console.log("[CHECKOUT] Line items:", line_items);
+
     let stripeCustomer = await db.stripeCustomer.findUnique({
       where: {
         userId: user.id,
@@ -63,6 +71,7 @@ export async function POST(
     });
 
     if (!stripeCustomer) {
+      console.log("[CHECKOUT] Creating new Stripe customer");
       const customer = await stripe.customers.create({
         email: user.emailAddresses[0].emailAddress,
       });
@@ -75,11 +84,13 @@ export async function POST(
       });
     }
 
+    console.log("[CHECKOUT] Using Stripe customer:", stripeCustomer.stripeCustomerId);
+
     const session = await stripe.checkout.sessions.create({
       customer: stripeCustomer.stripeCustomerId,
       line_items,
       mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/courses/${course.id}?succes=1`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/courses/${course.id}?success=1`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/courses/${course.id}?canceled=1`,
       metadata: {
         courseId: course.id,
@@ -87,10 +98,11 @@ export async function POST(
       }
     });
 
+    console.log("[CHECKOUT] Created session:", session.id);
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    console.log("[COURSE_ID_CHECKOUT]", error);
+    console.error("[COURSE_ID_CHECKOUT] Error:", error);
     return new NextResponse("Internal Error", { status: 500 })
   }
 }
