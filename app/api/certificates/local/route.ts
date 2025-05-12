@@ -31,13 +31,6 @@ export async function GET(req: Request) {
           courseId,
           userId: targetUserId
         }
-      },
-      include: {
-        course: {
-          include: {
-            category: true
-          }
-        }
       }
     });
     
@@ -45,7 +38,42 @@ export async function GET(req: Request) {
       return new NextResponse("Certificate not found", { status: 404 });
     }
     
-    return NextResponse.json(certificate);
+    // Obținem informațiile despre curs separat
+    const course = await db.course.findUnique({
+      where: {
+        id: courseId
+      }
+    });
+
+    // Obținem categoria cursului dacă există
+    const category = course?.categoryId ? await db.category.findUnique({
+      where: {
+        id: course.categoryId
+      }
+    }) : null;
+    
+    // Formatăm răspunsul pentru a include toate informațiile necesare
+    const response = {
+      courseId: certificate.courseId,
+      userId: certificate.userId,
+      timestamp: new Date(certificate.issuedAt).getTime() / 1000,
+      exists: true,
+      courseName: certificate.courseName,
+      categoryName: certificate.categoryName,
+      blockchainTx: certificate.blockchainTx,
+      txStatus: certificate.txStatus || "pending",
+      txError: certificate.txError,
+      issuedAt: certificate.issuedAt,
+      courseDetails: {
+        title: course?.title || certificate.courseName,
+        description: course?.description || "Descriere indisponibilă",
+        imageUrl: course?.imageUrl || "/placeholder.png",
+        categoryName: category?.name || certificate.categoryName,
+        teacherId: course?.userId
+      }
+    };
+    
+    return NextResponse.json(response);
   } catch (error) {
     console.error("[CERTIFICATE_LOCAL_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });

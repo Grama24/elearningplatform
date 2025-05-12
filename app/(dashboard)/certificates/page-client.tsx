@@ -25,7 +25,7 @@ const CERTIFICATE_ABI = [
   "function issueCertificate(string memory courseId, string memory userId) public",
 ];
 
-// Hardcodăm valorile pentru a evita problemele cu variabilele de mediu în client
+
 const CERTIFICATE_CONTRACT_ADDRESS =
   "0x665f60d20B7ad409F04AEaC85A1e6DEC6A242439";
 const SEPOLIA_RPC_URL =
@@ -60,6 +60,13 @@ interface Certificate {
   source?: string;
   blockchainTx?: string;
   pending?: boolean;
+  txStatus?:
+    | "pending"
+    | "confirmed"
+    | "failed"
+    | "insufficient_gas"
+    | "not_started";
+  txError?: string;
 }
 
 export default function CertificatesClientPage() {
@@ -90,159 +97,106 @@ export default function CertificatesClientPage() {
       setError(null);
       setDebug("Started fetching certificates...");
 
-      // Încercăm mai întâi să obținem certificatele din blockchain
-      let blockchainCertificates: Certificate[] = [];
-      let blockchainError = null;
-
-      try {
-        // Inițializăm provider-ul cu URL-ul hardcodat
-        const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
-        setDebug((prev) => prev + "\nProvider initialized");
-
-        // Afișăm adresa contractului pentru debugging
-        setDebug(
-          (prev) => prev + `\nContract address: ${CERTIFICATE_CONTRACT_ADDRESS}`
-        );
-
-        // Inițializăm contractul cu adresa hardcodată
-        const contract = new ethers.Contract(
-          CERTIFICATE_CONTRACT_ADDRESS,
-          CERTIFICATE_ABI,
-          provider
-        );
-        setDebug((prev) => prev + "\nContract initialized");
-
-        // Testăm conexiunea la blockchain
-        try {
-          const blockNumber = await provider.getBlockNumber();
-          setDebug(
-            (prev) => prev + `\nConnected to network, block: ${blockNumber}`
-          );
-        } catch (err) {
-          setDebug((prev) => prev + `\nError connecting to network: ${err}`);
-          throw new Error(`Nu s-a putut conecta la blockchain: ${err}`);
-        }
-
-        setDebug(
-          (prev) => prev + `\nFetching certificates for user: ${userId}`
-        );
-
-        // Acum încercăm să obținem toate certificatele din blockchain
-        const userCertificates = await contract.getCertificatesByOwner(userId);
-
-        // Folosim funcția noastră personalizată pentru a serializa BigInt
-        setDebug(
-          (prev) =>
-            prev +
-            `\nCertificates received: ${stringifyWithBigInt(userCertificates)}`
-        );
-
-        // Formatăm certificatele pentru afișare
-        blockchainCertificates = Array.isArray(userCertificates)
-          ? userCertificates.map((cert: any) => ({
-              courseId: cert.courseId,
-              userId: cert.userId,
-              timestamp:
-                typeof cert.timestamp === "bigint"
-                  ? Number(cert.timestamp)
-                  : cert.timestamp,
-              exists: cert.exists,
-              source: "blockchain",
-            }))
-          : [];
-
-        setDebug(
-          (prev) =>
-            prev +
-            `\nFormatted blockchain certs: ${JSON.stringify(
-              blockchainCertificates
-            )}`
-        );
-      } catch (err) {
-        console.error("Error fetching certificates from blockchain:", err);
-        blockchainError = err;
-        setDebug((prev) => prev + `\nBlockchain error: ${err}`);
+      // Obținem certificatele din API
+      const response = await fetch(`/api/certificates/user/${userId}`);
+      if (!response.ok) {
+        throw new Error(`Error fetching certificates: ${response.status}`);
       }
 
-      // Acum încercăm să obținem certificatele din baza de date locală
-      let localCertificates: any[] = [];
-      try {
-        // Folosim noul API pentru certificate locale
-        const response = await fetch(`/api/certificates/user/${userId}`);
-        if (response.ok) {
-          localCertificates = await response.json();
-          setDebug(
-            (prev) =>
-              prev +
-              `\nLocal certificates loaded: ${JSON.stringify(
-                localCertificates
-              )}`
-          );
-        } else {
-          throw new Error(
-            `Eroare la încărcarea certificatelor locale: ${response.status}`
-          );
-        }
-      } catch (err) {
-        console.error("Error fetching certificates from local database:", err);
-        setDebug((prev) => prev + `\nLocal database error: ${err}`);
+      const certificates = await response.json();
+      console.log("Fetched certificates:", certificates);
 
-        // Dacă avem și eroare de blockchain și eroare locală, afișăm eroarea
-        if (blockchainError) {
-          setError(`Nu s-au putut încărca certificatele: ${err}`);
-          setLoading(false);
-          return;
-        }
-      }
+      // Verificăm statusul tranzacțiilor pentru certificatele cu blockchainTx
+      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+      const updatedCertificates = await Promise.all(
+        certificates.map(async (cert: any) => {
+          if (cert.blockchainTx) {
+            try {
+              const txReceipt = await provider.getTransactionReceipt(
+                cert.blockchainTx
+              );
+              console.log(
+                `Transaction receipt for ${cert.blockchainTx}:`,
+                txReceipt
+              );
 
-      // Combinăm certificatele din ambele surse, preferând pe cele din blockchain
-      const combinedCertificates = [...blockchainCertificates];
+              if (txReceipt) {
+                const newStatus =
+                  txReceipt.status === 1 ? "confirmed" : "failed";
+                if (newStatus !== cert.txStatus) {
+                  // Actualizăm statusul în baza de date
+                  await fetch("/api/certificates/update-status", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      courseId: cert.courseId,
+                      userId: cert.userId,
+                      blockchainTx: cert.blockchainTx,
+                      txStatus: newStatus,
+                      pending: false,
+                    }),
+                  });
 
-      // Adăugăm certificatele din baza de date locală care nu există în blockchain
-      for (const localCert of localCertificates) {
-        const existsInBlockchain = blockchainCertificates.some(
-          (bc) =>
-            bc.courseId === localCert.courseId && bc.userId === localCert.userId
-        );
-
-        if (!existsInBlockchain) {
-          const hasPendingTx = !!localCert.blockchainTx;
-          combinedCertificates.push({
-            courseId: localCert.courseId,
-            userId: localCert.userId,
-            timestamp: new Date(localCert.issuedAt).getTime() / 1000,
-            exists: true,
-            source: "local",
-            blockchainTx: localCert.blockchainTx || null,
-            pending: hasPendingTx, // Verificăm explicit dacă are tranzacție în așteptare
-          });
-
-          // Debug pentru a verifica starea certificatelor
-          if (hasPendingTx) {
-            setDebug(
-              (prev) =>
-                prev +
-                `\nFound pending certificate: ${localCert.courseId} with tx: ${localCert.blockchainTx}`
-            );
+                  return {
+                    ...cert,
+                    txStatus: newStatus,
+                    pending: false,
+                  };
+                }
+              }
+            } catch (error) {
+              console.error(
+                `Error checking transaction ${cert.blockchainTx}:`,
+                error
+              );
+            }
           }
-        }
-      }
-
-      setDebug(
-        (prev) =>
-          prev +
-          `\nCombined certificates: ${JSON.stringify(combinedCertificates)}`
+          return cert;
+        })
       );
 
-      setCertificates(combinedCertificates);
+      // Procesăm certificatele pentru a include toate informațiile necesare
+      const processedCertificates = updatedCertificates.map((cert: any) => {
+        // Asigurăm consistența între blockchainTx și txStatus
+        let txStatus = "not_started";
+        let pending = false;
 
-      // Obținem detaliile cursurilor pentru fiecare certificat
-      if (combinedCertificates.length > 0) {
-        await fetchCoursesDetails(combinedCertificates);
+        if (cert.blockchainTx) {
+          txStatus = cert.txStatus || "pending";
+          pending = cert.pending || false;
+        } else {
+          // Dacă nu există blockchainTx, resetăm și celelalte câmpuri legate de blockchain
+          txStatus = "not_started";
+          pending = false;
+        }
+
+        console.log("Processing certificate:", {
+          courseId: cert.courseId,
+          originalStatus: cert.txStatus,
+          originalTx: cert.blockchainTx,
+          newStatus: txStatus,
+          pending: pending,
+        });
+
+        return {
+          ...cert,
+          blockchainTx: cert.blockchainTx || null,
+          txStatus,
+          pending,
+          timestamp: new Date(cert.issuedAt).getTime() / 1000,
+        };
+      });
+
+      setCertificates(processedCertificates);
+
+      // Obținem detaliile cursurilor
+      if (processedCertificates.length > 0) {
+        await fetchCoursesDetails(processedCertificates);
       }
     } catch (err) {
       console.error("Error fetching certificates:", err);
-      setDebug((prev) => prev + `\nGeneral error: ${err}`);
       setError(`Nu s-au putut încărca certificatele: ${err}`);
     } finally {
       setLoading(false);
@@ -302,38 +256,256 @@ export default function CertificatesClientPage() {
 
     try {
       setIssuingCertificate(true);
-      setDebug((prev) => prev + "\n\nIssuing test certificate...");
+      setDebug((prev) => prev + "\n\nEmitere certificat de test...");
 
       // Inițializăm provider-ul
       const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
 
-      // Creăm un signer cu cheia privată
-      const signer = new ethers.Wallet(PRIVATE_KEY, provider);
-      setDebug((prev) => prev + "\nSigner initialized");
-
-      // Inițializăm contractul cu signer-ul
-      const contract = new ethers.Contract(
-        CERTIFICATE_CONTRACT_ADDRESS,
-        CERTIFICATE_ABI,
-        signer
+      // Verificăm soldul pentru debugging
+      const wallet = new ethers.Wallet(PRIVATE_KEY);
+      const walletAddress = wallet.address;
+      const balance = await provider.getBalance(walletAddress);
+      setDebug(
+        (prev) =>
+          prev + `\nSold curent portofel: ${ethers.formatEther(balance)} ETH`
       );
-      setDebug((prev) => prev + "\nContract with signer initialized");
 
-      // Emitem certificatul de test
-      setDebug((prev) => prev + `\nIssuing certificate for user: ${userId}`);
-      const tx = await contract.issueCertificate("testCourse", userId);
-      setDebug((prev) => prev + `\nTransaction sent: ${tx.hash}`);
+      // Pas 1: Creăm inițial un certificat local
+      try {
+        console.log("Creating initial local certificate...");
+        const localResponse = await fetch("/api/certificates/store", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            courseId: "testCourse",
+            courseName: "Test Course",
+            txStatus: "pending",
+          }),
+        });
 
-      // Așteptăm confirmarea tranzacției
-      await tx.wait();
-      setDebug((prev) => prev + "\nTransaction confirmed!");
+        if (!localResponse.ok) {
+          const errorText = await localResponse.text();
+          console.error("Failed to store local certificate:", errorText);
+          throw new Error(
+            `Eroare la salvarea certificatului local: ${localResponse.status}`
+          );
+        }
 
-      // Reîncărcăm certificatele
-      await fetchCertificates();
+        const localCertificate = await localResponse.json();
+        console.log("Local certificate created:", localCertificate);
+
+        setDebug((prev) => prev + "\nCertificat local creat");
+      } catch (storeErr) {
+        console.error("Error storing local certificate:", storeErr);
+        setDebug(
+          (prev) =>
+            prev + `\nEroare la salvarea certificatului local: ${storeErr}`
+        );
+        throw storeErr;
+      }
+
+      // Pas 2: Încercăm emiterea pe blockchain
+      try {
+        // Creăm un signer cu cheia privată
+        const signer = new ethers.Wallet(PRIVATE_KEY, provider);
+        console.log("Signer created with address:", signer.address);
+
+        // Inițializăm contractul cu signer-ul
+        const contract = new ethers.Contract(
+          CERTIFICATE_CONTRACT_ADDRESS,
+          CERTIFICATE_ABI,
+          signer
+        );
+        console.log("Contract initialized at:", CERTIFICATE_CONTRACT_ADDRESS);
+
+        // Estimăm gazul necesar
+        const gasEstimate = await contract.issueCertificate.estimateGas(
+          "testCourse",
+          userId
+        );
+        console.log("Gas estimated:", gasEstimate.toString());
+
+        // Obținem prețul gazului și calculăm parametrii EIP-1559
+        const feeData = await provider.getFeeData();
+        console.log("Fee data:", {
+          maxFeePerGas: feeData.maxFeePerGas
+            ? ethers.formatUnits(feeData.maxFeePerGas, "gwei")
+            : "N/A",
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas
+            ? ethers.formatUnits(feeData.maxPriorityFeePerGas, "gwei")
+            : "N/A",
+        });
+
+        // Calculăm valorile reduse pentru EIP-1559
+        const reducedMaxFeePerGas = feeData.maxFeePerGas
+          ? (feeData.maxFeePerGas * BigInt(25)) / BigInt(100)
+          : undefined;
+
+        const reducedMaxPriorityFeePerGas = feeData.maxPriorityFeePerGas
+          ? (feeData.maxPriorityFeePerGas * BigInt(25)) / BigInt(100)
+          : undefined;
+
+        console.log("Sending transaction with params:", {
+          gasLimit: gasEstimate.toString(),
+          maxFeePerGas: reducedMaxFeePerGas?.toString(),
+          maxPriorityFeePerGas: reducedMaxPriorityFeePerGas?.toString(),
+        });
+
+        const tx = await contract.issueCertificate("testCourse", userId, {
+          gasLimit: gasEstimate,
+          maxFeePerGas: reducedMaxFeePerGas,
+          maxPriorityFeePerGas: reducedMaxPriorityFeePerGas,
+        });
+
+        console.log("Transaction sent:", tx);
+        console.log("Transaction hash:", tx.hash);
+        setDebug((prev) => prev + `\nTranzacție trimisă: ${tx.hash}`);
+
+        // Actualizăm imediat hash-ul tranzacției în baza de date
+        console.log("Updating transaction hash in database:", {
+          courseId: "testCourse",
+          userId,
+          blockchainTx: tx.hash,
+          txStatus: "pending",
+        });
+
+        const updateResponse = await fetch("/api/certificates/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            courseId: "testCourse",
+            userId,
+            blockchainTx: tx.hash,
+            txStatus: "pending",
+          }),
+        });
+
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          console.error(
+            "Failed to update transaction hash in database:",
+            errorText
+          );
+        } else {
+          const updatedCert = await updateResponse.json();
+          console.log("Certificate updated with hash:", updatedCert);
+        }
+
+        // Așteptăm confirmarea tranzacției
+        console.log("Waiting for transaction confirmation...");
+        const receipt = await tx.wait();
+        console.log("Transaction receipt:", receipt);
+
+        if (receipt.status === 1) {
+          // Tranzacția a fost confirmată cu succes
+          console.log("Transaction confirmed successfully");
+          const confirmUpdateResponse = await fetch(
+            "/api/certificates/update-status",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                courseId: "testCourse",
+                userId,
+                blockchainTx: tx.hash,
+                txStatus: "confirmed",
+                confirmed: true,
+              }),
+            }
+          );
+
+          if (!confirmUpdateResponse.ok) {
+            console.error(
+              "Failed to update confirmation status:",
+              await confirmUpdateResponse.text()
+            );
+          } else {
+            console.log(
+              "Confirmation status updated:",
+              await confirmUpdateResponse.json()
+            );
+          }
+        }
+
+        // Deschidem modalul certificatului după generare
+        const newCertificate = {
+          courseId: "testCourse",
+          userId: userId,
+          timestamp: Math.floor(Date.now() / 1000),
+          exists: true,
+          source: "local",
+          blockchainTx: tx.hash,
+          pending: true,
+          txStatus: "pending",
+          courseDetails: {
+            id: "testCourse",
+            title: "Test Course",
+            description: "Certificat de test",
+            imageUrl: "/placeholder.png",
+            teacherName: "Sistem",
+          },
+        };
+
+        // Setăm certificatul selectat înainte de a reîncărca lista
+        setSelectedCertificate(newCertificate);
+        console.log("Setting selected certificate with tx hash:", tx.hash);
+
+        // Reîncărcăm certificatele pentru a reflecta starea actualizată
+        await fetchCertificates();
+
+        // Informăm utilizatorul că procesul blockchain este în curs
+        setDebug(
+          (prev) =>
+            prev + `\nCertificat creat și tranzacție blockchain inițiată!`
+        );
+      } catch (txError) {
+        // Gestionarea erorilor blockchain
+        let errorStatus = "failed";
+        let errorMessage = String(txError);
+
+        setDebug((prev) => prev + `\nEroare blockchain: ${txError}`);
+
+        if (errorMessage.includes("insufficient funds")) {
+          errorStatus = "insufficient_gas";
+          errorMessage = `Fonduri insuficiente în portofel (${wallet.address}). Pentru a realiza emisiile de certificate pe blockchain, vă rugăm să obțineți ETH de la un faucet Sepolia.`;
+        }
+
+        // Actualizăm starea certificatului local cu informații despre eroare
+        await fetch("/api/certificates/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            courseId: "testCourse",
+            userId,
+            txStatus: errorStatus,
+            txError: errorMessage.substring(0, 500),
+          }),
+        });
+
+        // Indicăm că certificatul este disponibil local, chiar dacă blockchain a eșuat
+        setDebug(
+          (prev) =>
+            prev +
+            `\nCertificat creat local, dar tranzacția blockchain a eșuat: ${errorMessage}`
+        );
+
+        // Reîncărcăm certificatele pentru a vedea starea actualizată
+        await fetchCertificates();
+      }
     } catch (err) {
-      console.error("Error issuing certificate:", err);
-      setDebug((prev) => prev + `\nError issuing certificate: ${err}`);
-      setError(`Couldn't issue certificate: ${err}`);
+      console.error("Eroare în procesul de emitere a certificatului:", err);
+      setDebug((prev) => prev + `\nEroare generală: ${err}`);
+      setError(
+        `Nu s-a putut finaliza procesul de emitere a certificatului: ${err}`
+      );
     } finally {
       setIssuingCertificate(false);
     }
@@ -402,6 +574,9 @@ export default function CertificatesClientPage() {
             cert.blockchainTx!
           );
 
+          // Obținem tranzacția completă pentru a verifica detalii despre gas
+          const transaction = await provider.getTransaction(cert.blockchainTx!);
+
           if (txReceipt && txReceipt.status === 1) {
             // Tranzacția a fost confirmată cu succes
             setDebug(
@@ -421,6 +596,8 @@ export default function CertificatesClientPage() {
                   courseId: cert.courseId,
                   userId: cert.userId,
                   confirmed: true,
+                  txStatus: "confirmed",
+                  txError: null,
                 }),
               });
             } catch (updateErr) {
@@ -435,6 +612,41 @@ export default function CertificatesClientPage() {
             setDebug(
               (prev) => prev + `\nTransaction ${cert.blockchainTx} failed`
             );
+
+            // Verificăm dacă a eșuat din cauza gazului insuficient
+            let txStatus = "failed";
+            let txError = "Tranzacția a eșuat pe blockchain";
+
+            if (transaction && transaction.gasLimit && txReceipt.gasUsed) {
+              if (
+                txReceipt.gasUsed.toString() === transaction.gasLimit.toString()
+              ) {
+                txStatus = "insufficient_gas";
+                txError = "Tranzacția a eșuat din cauza gazului insuficient";
+              }
+            }
+
+            // Actualizăm statusul în baza de date
+            try {
+              await fetch(`/api/certificates/update-status`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  courseId: cert.courseId,
+                  userId: cert.userId,
+                  confirmed: false,
+                  txStatus,
+                  txError,
+                }),
+              });
+            } catch (updateErr) {
+              console.error("Error updating certificate status:", updateErr);
+            }
+
+            // Reîmprospătăm lista de certificate
+            fetchCertificates();
           } else {
             // Tranzacția este încă în așteptare
             setDebug(
@@ -453,6 +665,74 @@ export default function CertificatesClientPage() {
       console.error("Error checking pending transactions:", err);
     }
   };
+
+  // Adăugăm o funcție pentru a corecta statusul în baza de date
+  const correctCertificateStatus = async (cert: any) => {
+    try {
+      console.log("Correcting certificate status for:", cert.courseId);
+
+      // Determinăm statusul corect
+      let txStatus = "not_started";
+      let pending = false;
+
+      if (cert.blockchainTx) {
+        const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+        const txReceipt = await provider.getTransactionReceipt(
+          cert.blockchainTx
+        );
+
+        if (txReceipt) {
+          txStatus = txReceipt.status === 1 ? "confirmed" : "failed";
+          pending = false;
+        } else {
+          txStatus = "pending";
+          pending = true;
+        }
+      }
+
+      // Actualizăm în baza de date doar dacă statusul este diferit
+      if (txStatus !== cert.txStatus || pending !== cert.pending) {
+        console.log("Updating certificate status in database:", {
+          courseId: cert.courseId,
+          oldStatus: cert.txStatus,
+          newStatus: txStatus,
+          oldPending: cert.pending,
+          newPending: pending,
+        });
+
+        await fetch("/api/certificates/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            courseId: cert.courseId,
+            userId: cert.userId,
+            blockchainTx: cert.blockchainTx,
+            txStatus,
+            pending,
+          }),
+        });
+      }
+    } catch (error) {
+      console.error("Error correcting certificate status:", error);
+    }
+  };
+
+  // Adăugăm un efect pentru a corecta statusurile incorecte
+  useEffect(() => {
+    if (certificates.length > 0) {
+      certificates.forEach((cert) => {
+        // Verificăm dacă certificatul are un status inconsistent
+        if (
+          (!cert.blockchainTx && cert.txStatus !== "not_started") ||
+          (!cert.blockchainTx && cert.pending === true)
+        ) {
+          correctCertificateStatus(cert);
+        }
+      });
+    }
+  }, [certificates]);
 
   useEffect(() => {
     fetchCertificates();
@@ -475,11 +755,271 @@ export default function CertificatesClientPage() {
         (cert) => cert.courseId === highlightCourseId
       );
       if (certificate) {
+        console.log("Found certificate to highlight:", certificate);
         const courseDetails = coursesDetails[certificate.courseId];
-        setSelectedCertificate({ ...certificate, courseDetails });
+
+        // Creăm un obiect complet pentru certificatul selectat
+        const selectedCert = {
+          ...certificate,
+          courseDetails,
+          blockchainTx: certificate.blockchainTx || null,
+          txStatus: certificate.txStatus || "pending",
+          pending: certificate.pending || true,
+        };
+
+        console.log("Setting selected certificate with:", selectedCert);
+        setSelectedCertificate(selectedCert);
       }
     }
   }, [highlightCourseId, certificates, coursesDetails]);
+
+  // Adăugăm un nou efect pentru a verifica și actualiza statusul certificatului selectat
+  useEffect(() => {
+    const checkSelectedCertificateStatus = async () => {
+      if (selectedCertificate?.blockchainTx) {
+        try {
+          const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+          const txReceipt = await provider.getTransactionReceipt(
+            selectedCertificate.blockchainTx
+          );
+
+          if (txReceipt) {
+            const newStatus = txReceipt.status === 1 ? "confirmed" : "failed";
+            console.log("Transaction receipt found:", {
+              txHash: selectedCertificate.blockchainTx,
+              newStatus,
+              receipt: txReceipt,
+            });
+
+            if (newStatus !== selectedCertificate.txStatus) {
+              console.log("Updating certificate status:", {
+                courseId: selectedCertificate.courseId,
+                userId,
+                blockchainTx: selectedCertificate.blockchainTx,
+                txStatus: newStatus,
+                pending: false,
+              });
+
+              // Actualizăm și în baza de date
+              const updateResponse = await fetch(
+                "/api/certificates/update-status",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    courseId: selectedCertificate.courseId,
+                    userId,
+                    blockchainTx: selectedCertificate.blockchainTx,
+                    txStatus: newStatus,
+                    pending: false,
+                  }),
+                }
+              );
+
+              console.log("Status update response:", {
+                status: updateResponse.status,
+                ok: updateResponse.ok,
+                data: await updateResponse.json().catch(() => null),
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error checking transaction status:", error);
+        }
+      }
+    };
+
+    if (selectedCertificate?.blockchainTx) {
+      checkSelectedCertificateStatus();
+      const intervalId = setInterval(checkSelectedCertificateStatus, 10000);
+      return () => clearInterval(intervalId);
+    }
+  }, [selectedCertificate?.blockchainTx, userId]);
+
+  // Efect pentru a verifica certificatele cu blockchainTx
+  useEffect(() => {
+    if (certificates.length > 0) {
+      console.log("Checking certificates with blockchainTx:");
+      certificates.forEach((cert) => {
+        if (cert.blockchainTx) {
+          console.log("Certificate with tx:", {
+            courseId: cert.courseId,
+            blockchainTx: cert.blockchainTx,
+            txStatus: cert.txStatus,
+          });
+        }
+      });
+    }
+  }, [certificates]);
+
+  // Adăugăm useEffect pentru a actualiza informațiile blockchain
+  useEffect(() => {
+    const fetchBlockchainInfo = async (courseId: string, userId: string) => {
+      try {
+        console.log("Fetching blockchain info for:", { courseId, userId });
+        const response = await fetch(
+          `/api/certificates/local?courseId=${courseId}&userId=${userId}`
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Error fetching certificate info: ${response.status}`
+          );
+        }
+        const data = await response.json();
+        console.log("Received certificate data:", data);
+        return data;
+      } catch (error) {
+        console.error("Error fetching blockchain info:", error);
+        return null;
+      }
+    };
+
+    if (selectedCertificate?.courseId && selectedCertificate?.userId) {
+      fetchBlockchainInfo(
+        selectedCertificate.courseId,
+        selectedCertificate.userId
+      )
+        .then((data) => {
+          if (data) {
+            setSelectedCertificate((prev: Certificate | null) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                blockchainTx: data.blockchainTx,
+                txStatus: data.txStatus || "pending",
+                pending: data.pending,
+              };
+            });
+          }
+        })
+        .catch((error) => {
+          console.error("Error fetching blockchain info:", error);
+        });
+    }
+  }, [selectedCertificate?.courseId, selectedCertificate?.userId]);
+
+  const openCertificateModal = async (cert: any) => {
+    console.log("Opening certificate with details:", cert);
+    console.log("Current blockchain info:", {
+      blockchainTx: cert.blockchainTx,
+      txStatus: cert.txStatus,
+      pending: cert.pending,
+    });
+
+    try {
+      // Verificăm mai întâi dacă certificatul există pe blockchain
+      const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+      const contract = new ethers.Contract(
+        CERTIFICATE_CONTRACT_ADDRESS,
+        CERTIFICATE_ABI,
+        provider
+      );
+
+      console.log("Checking certificate on blockchain for:", {
+        courseId: cert.courseId,
+        userId: cert.userId,
+      });
+
+      const blockchainCert = await contract.getCertificate(
+        cert.courseId,
+        cert.userId
+      );
+      console.log("Blockchain certificate response:", blockchainCert);
+
+      const existsOnBlockchain = blockchainCert && blockchainCert.exists;
+      console.log("Exists on blockchain:", existsOnBlockchain);
+
+      // Facem un fetch pentru a obține detaliile actualizate ale certificatului
+      const response = await fetch(
+        `/api/certificates/local?courseId=${cert.courseId}&userId=${cert.userId}`
+      );
+      const updatedCert = await response.json();
+
+      console.log("Received updated certificate from API:", updatedCert);
+
+      // Determinăm statusul corect
+      let txStatus;
+      if (existsOnBlockchain) {
+        txStatus = "confirmed";
+        console.log(
+          "Certificate exists on blockchain, setting status to confirmed"
+        );
+      } else if (updatedCert.blockchainTx) {
+        // Verificăm statusul tranzacției
+        const txReceipt = await provider.getTransactionReceipt(
+          updatedCert.blockchainTx
+        );
+        console.log("Transaction receipt:", txReceipt);
+
+        if (txReceipt) {
+          if (txReceipt.status === 1) {
+            txStatus = "confirmed";
+            console.log("Transaction confirmed successfully");
+          } else {
+            txStatus = "failed";
+            console.log("Transaction failed");
+          }
+        } else {
+          txStatus = updatedCert.txStatus || "pending";
+          console.log("Transaction still pending or status unknown");
+        }
+      } else {
+        txStatus = "not_started";
+        console.log("Certificate not yet on blockchain");
+      }
+
+      console.log("Final status determination:", {
+        existsOnBlockchain,
+        updatedCertTxHash: updatedCert.blockchainTx,
+        decidedStatus: txStatus,
+        txReceipt: txStatus !== "not_started" ? "checked" : "not_applicable",
+      });
+
+      if (updatedCert) {
+        const mergedCertificate = {
+          ...cert,
+          courseDetails: cert.courseDetails,
+          blockchainTx: updatedCert.blockchainTx,
+          txStatus: txStatus,
+          existsOnBlockchain: existsOnBlockchain,
+          pending:
+            !existsOnBlockchain && updatedCert.blockchainTx
+              ? updatedCert.pending || false
+              : false,
+          txError: updatedCert.txError,
+        };
+
+        console.log(
+          "Setting selected certificate with merged data:",
+          mergedCertificate
+        );
+        setSelectedCertificate(mergedCertificate);
+      } else {
+        console.log("No updated certificate received, using original:", cert);
+        setSelectedCertificate({
+          ...cert,
+          txStatus: txStatus,
+          existsOnBlockchain: existsOnBlockchain,
+          pending:
+            !existsOnBlockchain && cert.blockchainTx
+              ? cert.pending || false
+              : false,
+        });
+      }
+    } catch (error) {
+      console.error("Error checking certificate:", error);
+      console.log("Using original certificate data due to error:", cert);
+      setSelectedCertificate({
+        ...cert,
+        txStatus: cert.blockchainTx
+          ? cert.txStatus || "pending"
+          : "not_started",
+        pending: cert.blockchainTx ? cert.pending || false : false,
+      });
+    }
+  };
 
   if (!userId) {
     return (
@@ -577,37 +1117,43 @@ export default function CertificatesClientPage() {
                           <ExternalLinkIcon className="h-3 w-3" />
                         </a>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Statusul certificatului - Pending sau Confirmat */}
-                  {cert.pending ? (
-                    <div className="flex items-center mt-2">
-                      <div className="h-4 w-4 rounded-full bg-yellow-400 animate-pulse mr-1"></div>
-                      <span className="text-sm text-yellow-500">
-                        În curs de procesare
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center mt-2">
-                      <CheckCircleIcon className="h-4 w-4 text-green-500 mr-1" />
-                      <span className="text-sm text-green-500">
-                        Certificat verificat
-                      </span>
+                      {cert.txStatus === "pending" && (
+                        <div className="flex items-center mt-1">
+                          <div className="h-2 w-2 rounded-full bg-yellow-400 animate-pulse mr-1"></div>
+                          <span className="text-xs text-yellow-600">
+                            În așteptare
+                          </span>
+                        </div>
+                      )}
+                      {cert.txStatus === "insufficient_gas" && (
+                        <div className="flex items-center mt-1">
+                          <div className="h-2 w-2 rounded-full bg-red-400 mr-1"></div>
+                          <span className="text-xs text-red-600">
+                            Gas insuficient
+                          </span>
+                        </div>
+                      )}
+                      {cert.txStatus === "failed" && (
+                        <div className="flex items-center mt-1">
+                          <div className="h-2 w-2 rounded-full bg-red-400 mr-1"></div>
+                          <span className="text-xs text-red-600">Eșuat</span>
+                        </div>
+                      )}
+                      {cert.txStatus === "confirmed" && (
+                        <div className="flex items-center mt-1">
+                          <CheckCircleIcon className="h-3 w-3 text-green-500 mr-1" />
+                          <span className="text-xs text-green-600">
+                            Confirmat
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   <div className="mt-4 flex items-center justify-between">
                     <button
-                      onClick={() =>
-                        setSelectedCertificate({
-                          ...cert,
-                          courseDetails,
-                          pending: cert.pending, // Asigurăm explicit transferul statusului pending
-                          blockchainTx: cert.blockchainTx, // Asigurăm explicit transferul ID-ului tranzacției
-                        })
-                      }
-                      className="text-sm text-blue-600 hover:underline"
+                      onClick={() => openCertificateModal(cert)}
+                      className="text-blue-600 hover:underline text-sm"
                     >
                       Vezi certificatul
                     </button>
@@ -720,66 +1266,82 @@ export default function CertificatesClientPage() {
               </div>
 
               {/* Informații blockchain */}
-              <div className="mb-6 border rounded-lg p-4 bg-gray-50">
-                <h4 className="text-sm font-medium mb-2">
+              <div className="mb-6">
+                <p className="text-sm font-medium mb-2">
                   Informații Blockchain
-                </h4>
+                </p>
+                {(() => {
+                  console.log(
+                    "Rendering blockchain info section. Certificate:",
+                    selectedCertificate
+                  );
+                  return null;
+                })()}
 
-                {selectedCertificate.blockchainTx ? (
+                {selectedCertificate.existsOnBlockchain ? (
+                  <div className="flex items-center mb-2">
+                    <CheckCircleIcon className="h-4 w-4 text-green-500 mr-2" />
+                    <span className="text-sm">
+                      Certificat verificat pe blockchain
+                    </span>
+                  </div>
+                ) : selectedCertificate.blockchainTx ? (
                   <>
-                    <div className="mb-3">
-                      <p className="text-sm text-gray-500">Transaction ID:</p>
-                      <div className="flex items-center mt-1">
-                        <p className="text-xs font-mono bg-gray-100 p-2 rounded break-all max-w-full">
-                          {selectedCertificate.blockchainTx}
-                        </p>
-                        <a
-                          href={`https://sepolia.etherscan.io/tx/${selectedCertificate.blockchainTx}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-2 text-blue-600"
-                        >
-                          <ExternalLinkIcon className="h-4 w-4" />
-                        </a>
-                      </div>
+                    <div className="flex items-center mb-2">
+                      {selectedCertificate.txStatus === "pending" ? (
+                        <>
+                          <div className="h-4 w-4 rounded-full bg-yellow-400 animate-pulse mr-2"></div>
+                          <span className="text-sm">
+                            Certificat în curs de procesare pe blockchain. Hash
+                            tranzacție: {selectedCertificate.blockchainTx}
+                          </span>
+                        </>
+                      ) : selectedCertificate.txStatus ===
+                        "insufficient_gas" ? (
+                        <div className="h-4 w-4 rounded-full bg-red-400 mr-2"></div>
+                      ) : selectedCertificate.txStatus === "failed" ? (
+                        <div className="h-4 w-4 rounded-full bg-red-400 mr-2"></div>
+                      ) : (
+                        <div className="h-4 w-4 rounded-full bg-gray-400 mr-2"></div>
+                      )}
+                      <span className="text-sm">
+                        {selectedCertificate.txStatus === "pending"
+                          ? "Tranzacția este în curs de procesare pe blockchain"
+                          : selectedCertificate.txStatus === "insufficient_gas"
+                          ? "Eroare: Gas insuficient pentru finalizarea tranzacției"
+                          : selectedCertificate.txStatus === "failed"
+                          ? "Eroare: Tranzacția a eșuat pe blockchain"
+                          : "Status necunoscut"}
+                      </span>
                     </div>
 
-                    <div className="flex items-center">
-                      {selectedCertificate.pending ? (
-                        <>
-                          <div className="h-3 w-3 rounded-full bg-yellow-400 animate-pulse mr-2"></div>
-                          <span className="text-sm text-yellow-600">
-                            În curs de procesare pe blockchain
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircleIcon className="h-4 w-4 text-green-500 mr-2" />
-                          <span className="text-sm text-green-600">
-                            Verificat și confirmat pe blockchain
-                          </span>
-                        </>
-                      )}
+                    <div className="mb-2 text-sm">
+                      <span className="text-gray-500">Hash Tranzacție:</span>
+                      <div className="font-mono text-xs break-all mt-1">
+                        {selectedCertificate.blockchainTx}
+                      </div>
+                      <a
+                        href={`https://sepolia.etherscan.io/tx/${selectedCertificate.blockchainTx}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-xs flex items-center mt-1"
+                      >
+                        <span>Vezi pe Etherscan</span>
+                        <ExternalLinkIcon className="h-3 w-3 ml-1" />
+                      </a>
                     </div>
+
+                    {selectedCertificate.txError && (
+                      <div className="mt-2 text-sm text-red-500">
+                        <p>Eroare: {selectedCertificate.txError}</p>
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <div className="flex items-center">
-                    <CheckCircleIcon className="h-4 w-4 text-green-500 mr-2" />
-                    <span className="text-sm">Certificat verificat local</span>
-                  </div>
+                  <p className="text-sm text-gray-500">
+                    Se verifică statusul certificatului pe blockchain...
+                  </p>
                 )}
-
-                <p className="text-xs text-gray-500 mt-3">
-                  Contract verificare:{" "}
-                  <a
-                    href={`https://sepolia.etherscan.io/address/${CERTIFICATE_CONTRACT_ADDRESS}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline break-all"
-                  >
-                    {CERTIFICATE_CONTRACT_ADDRESS}
-                  </a>
-                </p>
               </div>
 
               {selectedCertificate.courseDetails?.teacherName && (
@@ -792,10 +1354,11 @@ export default function CertificatesClientPage() {
               )}
 
               <div className="text-center mt-6">
-                <div className="flex justify-center space-x-4 mb-4">
+                <div className="flex justify-center space-x-4">
                   <Button
                     onClick={() => verifyCertificate(selectedCertificate)}
                     disabled={verifyingCertificate}
+                    className="bg-blue-800 hover:bg-blue-900"
                   >
                     {verifyingCertificate
                       ? "Se verifică..."
@@ -807,99 +1370,46 @@ export default function CertificatesClientPage() {
                       <Link
                         href={`/courses/${selectedCertificate.courseDetails.id}`}
                       >
-                        <Button variant="outline">
-                          Vezi cursul
-                          <ArrowRightIcon className="h-4 w-4 ml-2" />
-                        </Button>
+                        <Button variant="outline">Vezi cursul</Button>
                       </Link>
                     )}
                 </div>
+              </div>
 
-                {/* Informații despre statusul certificatului */}
-                {selectedCertificate.pending && (
-                  <div className="p-4 rounded-lg bg-yellow-50 text-yellow-800 mb-4 flex items-center">
-                    <div className="h-4 w-4 rounded-full bg-yellow-400 animate-pulse mr-2"></div>
+              {/* Mesaj de verificare */}
+              {verificationResult && verificationResult.isValid && (
+                <div className="mt-4 p-4 rounded-lg bg-green-50 border border-green-100">
+                  <div className="flex items-start">
+                    <CheckCircleIcon className="h-5 w-5 mt-0.5 mr-2 flex-shrink-0 text-green-500" />
                     <div>
-                      <p className="font-medium">Certificat în așteptare</p>
-                      <p className="text-sm">
-                        Tranzacția pe blockchain este în curs de procesare
+                      <p className="font-medium text-green-800">
+                        Certificatul a fost verificat cu succes pe blockchain!
                       </p>
-                      {selectedCertificate.blockchainTx && (
-                        <div className="mt-2">
-                          <p className="text-xs">Transaction ID:</p>
-                          <div className="flex items-center">
-                            <code className="text-xs bg-yellow-100 p-1 rounded break-all">
-                              {selectedCertificate.blockchainTx}
-                            </code>
-                            <a
-                              href={`https://sepolia.etherscan.io/tx/${selectedCertificate.blockchainTx}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="ml-2 text-yellow-700"
-                            >
-                              <ExternalLinkIcon className="h-4 w-4" />
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {!selectedCertificate.pending &&
-                  selectedCertificate.blockchainTx && (
-                    <div className="p-4 rounded-lg bg-green-50 text-green-800 mb-4 flex items-center">
-                      <CheckCircleIcon className="h-5 w-5 mr-2" />
-                      <div>
-                        <p className="font-medium">
-                          Certificat confirmat pe blockchain
-                        </p>
-                        <div className="mt-2">
-                          <p className="text-xs">Transaction ID:</p>
-                          <div className="flex items-center">
-                            <code className="text-xs bg-green-100 p-1 rounded break-all">
-                              {selectedCertificate.blockchainTx}
-                            </code>
-                            <a
-                              href={`https://sepolia.etherscan.io/tx/${selectedCertificate.blockchainTx}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="ml-2 text-green-700"
-                            >
-                              <ExternalLinkIcon className="h-4 w-4" />
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {verificationResult && (
-                  <div
-                    className={`p-4 rounded-lg ${
-                      verificationResult.isValid
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    <p>{verificationResult.message}</p>
-                    <p className="text-sm mt-2">
-                      Adresa contractului: {CERTIFICATE_CONTRACT_ADDRESS}
-                    </p>
-                    <p className="text-sm mt-1">
+                      <p className="text-sm text-green-700 mt-1">
+                        Adresa contractului:{" "}
+                        <span className="font-mono break-all text-xs">
+                          {CERTIFICATE_CONTRACT_ADDRESS}
+                        </span>
+                      </p>
                       <a
                         href={`https://sepolia.etherscan.io/address/${CERTIFICATE_CONTRACT_ADDRESS}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline flex items-center justify-center mt-2"
+                        className="text-blue-600 hover:underline text-sm flex items-center mt-1"
                       >
                         <span>Vezi pe Etherscan</span>
                         <ExternalLinkIcon className="h-3 w-3 ml-1" />
                       </a>
-                    </p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
+              {verificationResult && !verificationResult.isValid && (
+                <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-100">
+                  <p className="text-red-800">{verificationResult.message}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

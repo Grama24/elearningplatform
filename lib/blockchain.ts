@@ -143,13 +143,44 @@ export class BlockchainService {
 
   async getCertificate(courseId: string, userId: string) {
     try {
+      console.log("Getting certificate from blockchain for:", { courseId, userId });
       const certificate = await this.contract.getCertificate(courseId, userId);
-      return {
+      console.log("Raw blockchain certificate response:", certificate);
+      
+      // Verificăm dacă avem un răspuns valid
+      if (!certificate || (typeof certificate === 'object' && Object.keys(certificate).length === 0)) {
+        console.log("Invalid or empty certificate response");
+        return null;
+      }
+      
+      // Verificăm dacă certificatul există și are toate câmpurile necesare
+      const exists = certificate.exists === true;
+      if (!exists || !certificate.courseId || !certificate.userId || !certificate.timestamp) {
+        console.log("Certificate exists check failed:", {
+          exists,
+          hasFields: {
+            courseId: !!certificate.courseId,
+            userId: !!certificate.userId,
+            timestamp: !!certificate.timestamp
+          }
+        });
+        return {
+          courseId,
+          userId,
+          timestamp: new Date(),
+          exists: false
+        };
+      }
+      
+      const result = {
         courseId: certificate.courseId,
         userId: certificate.userId,
         timestamp: new Date(Number(certificate.timestamp) * 1000),
-        exists: certificate.exists
+        exists: true
       };
+      
+      console.log("Processed certificate result:", result);
+      return result;
     } catch (error) {
       console.error('Error getting certificate:', error);
       return null;

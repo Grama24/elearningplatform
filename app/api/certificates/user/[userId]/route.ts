@@ -33,23 +33,36 @@ export async function GET(
     });
     
     // Formatăm certificatele pentru a fi compatibile cu cele din blockchain
-    const formattedCertificates = certificates.map(cert => ({
-      courseId: cert.courseId,
-      userId: cert.userId,
-      timestamp: new Date(cert.issuedAt).getTime() / 1000,
-      exists: true,
-      courseName: cert.courseName,
-      categoryName: cert.categoryName,
-      blockchainTx: cert.blockchainTx,
-      issuedAt: cert.issuedAt,
-      courseDetails: {
-        title: cert.course?.title || cert.courseName,
-        description: cert.course?.description || "Descriere indisponibilă",
-        imageUrl: cert.course?.imageUrl || "/placeholder.png",
-        categoryName: cert.course?.category?.name || cert.categoryName,
-        teacherId: cert.course?.userId
-      }
-    }));
+    const formattedCertificates = certificates.map(cert => {
+      // Verificăm dacă avem un curs valid
+      const courseDetails = cert.course ? {
+        title: cert.course.title,
+        description: cert.course.description || "Descriere indisponibilă",
+        imageUrl: cert.course.imageUrl || "/placeholder.png",
+        categoryName: cert.course.category?.name || cert.categoryName,
+        teacherId: cert.course.userId
+      } : {
+        title: cert.courseName,
+        description: "Curs indisponibil",
+        imageUrl: "/placeholder.png",
+        categoryName: cert.categoryName || "Categorie indisponibilă",
+        teacherId: null
+      };
+
+      return {
+        courseId: cert.courseId,
+        userId: cert.userId,
+        timestamp: new Date(cert.issuedAt).getTime() / 1000,
+        exists: true,
+        courseName: cert.courseName,
+        categoryName: cert.categoryName,
+        blockchainTx: cert.blockchainTx,
+        txStatus: cert.txStatus,
+        txError: cert.txError,
+        issuedAt: cert.issuedAt,
+        courseDetails
+      };
+    });
     
     return NextResponse.json(formattedCertificates);
   } catch (error) {

@@ -72,7 +72,22 @@ export async function PUT(
           
           // Emitem certificatul cu ID-ul cursului
           // În viitor, am putea actualiza contractul pentru a stoca mai multe informații
-          await blockchainService.issueCertificate(params.courseId, userId);
+          const result = await blockchainService.issueCertificate(params.courseId, userId);
+          
+          // Extragem hash-ul tranzacției și statusul
+          let blockchainTx = null;
+          let txStatus = "pending";
+          
+          if (typeof result === "object") {
+            if (result.success && result.txHash) {
+              blockchainTx = result.txHash;
+              txStatus = "pending";
+            } else if (result.error === "INSUFFICIENT_FUNDS") {
+              txStatus = "insufficient_gas";
+            } else {
+              txStatus = "failed";
+            }
+          }
           
           // Asociem certificatul cu cursul în baza de date locală pentru referință mai ușoară
           try {
@@ -87,6 +102,8 @@ export async function PUT(
                 courseName: course.title,
                 categoryName: course.category?.name || null,
                 issuedAt: new Date(),
+                blockchainTx,
+                txStatus,
               },
               create: {
                 courseId: params.courseId,
@@ -94,6 +111,8 @@ export async function PUT(
                 courseName: course.title,
                 categoryName: course.category?.name || null,
                 issuedAt: new Date(),
+                blockchainTx,
+                txStatus,
               }
             });
           } catch (dbError) {

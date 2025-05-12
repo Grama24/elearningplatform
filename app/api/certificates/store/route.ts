@@ -11,11 +11,23 @@ export async function POST(req: Request) {
     }
     
     const body = await req.json();
-    const { courseId, courseName, categoryName, blockchainTx } = body;
+    console.log("Received store request:", body);
+    
+    const { courseId, courseName, categoryName, blockchainTx, txStatus } = body;
     
     if (!courseId || !courseName) {
+      console.log("Missing required fields:", { courseId, courseName });
       return new NextResponse("Missing courseId or courseName", { status: 400 });
     }
+    
+    console.log("Creating/updating certificate with:", {
+      courseId,
+      userId,
+      courseName,
+      categoryName,
+      blockchainTx,
+      txStatus
+    });
     
     // Stocăm certificatul în baza de date locală
     const certificate = await db.certificate.upsert({
@@ -29,6 +41,7 @@ export async function POST(req: Request) {
         courseName,
         categoryName: categoryName || null,
         blockchainTx: blockchainTx || null,
+        txStatus: txStatus || "pending",
         issuedAt: new Date()
       },
       create: {
@@ -37,9 +50,12 @@ export async function POST(req: Request) {
         courseName,
         categoryName: categoryName || null,
         blockchainTx: blockchainTx || null,
+        txStatus: txStatus || "pending",
         issuedAt: new Date()
       }
     });
+    
+    console.log("Certificate stored:", certificate);
     
     return NextResponse.json(certificate);
   } catch (error) {

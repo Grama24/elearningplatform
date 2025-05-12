@@ -134,9 +134,11 @@ model Certificate {
   courseName   String
   categoryName String?
   blockchainTx String?
+  txStatus     String?
+  txError      String?
   issuedAt     DateTime @default(now())
 
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([courseId, userId])
   @@index([userId])

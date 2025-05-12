@@ -1,4 +1,4 @@
- import { auth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -11,9 +11,12 @@ export async function POST(req: Request) {
     }
     
     const body = await req.json();
-    const { courseId, userId: certUserId, confirmed } = body;
+    console.log("Received update request:", body);
+    
+    const { courseId, userId: certUserId, confirmed, txStatus, txError, blockchainTx } = body;
     
     if (!courseId || !certUserId) {
+      console.log("Missing required fields:", { courseId, certUserId });
       return new NextResponse("Missing courseId or userId", { status: 400 });
     }
     
@@ -27,13 +30,43 @@ export async function POST(req: Request) {
       }
     });
     
+    console.log("Existing certificate:", existingCertificate);
+    
     if (!existingCertificate) {
+      console.log("Certificate not found for:", { courseId, certUserId });
       return new NextResponse("Certificate not found", { status: 404 });
     }
     
-    // Actualizăm statusul certificatului
-    // Nu ștergem blockchainTx, dar adăugăm un câmp auxiliar pentru a marca că 
-    // certificatul a fost confirmat (în acest caz, folosim un câmp metadata)
+    // Pregătim datele pentru actualizare
+    const updateData: any = {};
+    
+    // Adăugăm hash-ul tranzacției dacă a fost furnizat
+    if (blockchainTx) {
+      console.log("Updating blockchain tx:", blockchainTx);
+      updateData.blockchainTx = blockchainTx;
+    }
+    
+    // Adăugăm statusul tranzacției dacă a fost furnizat
+    if (txStatus) {
+      console.log("Updating tx status:", txStatus);
+      updateData.txStatus = txStatus;
+    }
+    
+    // Adăugăm eroarea tranzacției dacă a fost furnizată
+    if (txError !== undefined) {
+      console.log("Updating tx error:", txError);
+      updateData.txError = txError;
+    }
+    
+    console.log("Final update data:", updateData);
+    
+    // Dacă nu avem date pentru actualizare, returnăm certificatul existent
+    if (Object.keys(updateData).length === 0) {
+      console.log("No updates needed");
+      return NextResponse.json(existingCertificate);
+    }
+    
+    // Actualizăm certificatul cu noile date
     const updatedCertificate = await db.certificate.update({
       where: {
         courseId_userId: {
@@ -41,12 +74,10 @@ export async function POST(req: Request) {
           userId: certUserId
         }
       },
-      data: {
-        // Nu folosim updatedAt pentru că nu există în schema
-        // Dacă vrem să adăugăm un marker pentru status, trebuie să modificăm
-        // schema Prisma să includă un câmp de status sau să folosim altă abordare
-      }
+      data: updateData
     });
+    
+    console.log("Certificate updated:", updatedCertificate);
     
     return NextResponse.json(updatedCertificate);
   } catch (error) {
