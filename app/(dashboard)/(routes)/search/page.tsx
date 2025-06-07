@@ -32,15 +32,15 @@ const SearchPage = async ({ searchParams }: SearchPageProps) => {
   });
 
   return (
-    <>
-      <div className="px-6 pt-5 md:hidden md:mb-0 block ">
+    <div className="p-6 space-y-6">
+      <div className="max-w-[600px]">
         <SearchInput />
       </div>
-      <div className="p-6 space-y-4">
+      <div className="space-y-4">
         <Categories items={categories} />
         <CoursesList items={courses} />
       </div>
-    </>
+    </div>
   );
 };
 

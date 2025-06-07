@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+
 interface SidebarItemProps {
   icon: LucideIcon;
   label: string;
@@ -27,24 +28,21 @@ export const SidebarItem = ({ icon: Icon, label, href }: SidebarItemProps) => {
       onClick={onClick}
       type="button"
       className={cn(
-        "flex items-center gap-x-2 text-slate-500 text-sm font-[500] pl-6 transition-all hover:text-slate-600 hover:bg-slate-300/20",
-        isActive &&
-          "text-sky-700 bg-sky-200/20 hover:bg-sky-200/20 hover:text-sky-700"
+        "w-full flex items-center gap-x-4 text-gray-600 text-base font-medium pl-8 pr-4 py-4 transition-all hover:bg-gray-50",
+        isActive && "text-yellow-600 bg-yellow-50 hover:bg-yellow-50"
       )}
     >
-      <div className="flex items-center gap-x-2 py-4">
-        <Icon
-          size={22}
-          className={cn("text-slate-500", isActive && "text-sky-700")}
-        />
-        {label}
-      </div>
-      <div
+      <Icon
+        size={24}
         className={cn(
-          "ml-auto opacity-0 border-2 border-sky-700 h-full transition-all",
-          isActive && "opacity-100"
+          "text-gray-400 transition-colors",
+          isActive && "text-yellow-600"
         )}
       />
+      <span>{label}</span>
+      {isActive && (
+        <div className="ml-auto w-1.5 h-8 bg-yellow-600 rounded-full" />
+      )}
     </button>
   );
 };

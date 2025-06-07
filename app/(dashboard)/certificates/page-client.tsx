@@ -25,7 +25,6 @@ const CERTIFICATE_ABI = [
   "function issueCertificate(string memory courseId, string memory userId) public",
 ];
 
-
 const CERTIFICATE_CONTRACT_ADDRESS =
   "0x665f60d20B7ad409F04AEaC85A1e6DEC6A242439";
 const SEPOLIA_RPC_URL =
@@ -1024,7 +1023,7 @@ export default function CertificatesClientPage() {
   if (!userId) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Certificatele mele</h1>
+        <h1 className="text-2xl font-bold mb-4">My certificates</h1>
         <div className="border rounded-lg p-4">
           <p className="text-gray-500">
             Vă rugăm să vă autentificați pentru a vedea certificatele
@@ -1036,7 +1035,7 @@ export default function CertificatesClientPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Certificatele mele</h1>
+      <h1 className="text-2xl font-bold mb-4">My certificates</h1>
       {loading ? (
         <div className="flex justify-center">
           <p>Se încarcă certificatele...</p>

@@ -13,10 +13,7 @@ const CertificatesClientPage = dynamic(() => import("./page-client"), {
 const ErrorBoundary = ({ children }: { children: React.ReactNode }) => {
   return (
     <div>
-      <div className="p-6">
-        <div className="text-2xl font-bold mb-4">Certificatele mele</div>
-        {children}
-      </div>
+      <div className="p-6">{children}</div>
     </div>
   );
 };

@@ -1,21 +1,21 @@
 "use client";
-import { BarChart, Compass, Layout, List, Award } from "lucide-react";
+import { Home, GraduationCap, Medal, Library, BarChart } from "lucide-react";
 import { SidebarItem } from "./sidebar-item";
 import { usePathname } from "next/navigation";
 
 const guestRoutes = [
   {
-    icon: Layout,
-    label: "Dashboard",
+    icon: Home,
+    label: "Home",
     href: "/",
   },
   {
-    icon: Compass,
-    label: "Browse",
+    icon: GraduationCap,
+    label: "Browse Courses",
     href: "/search",
   },
   {
-    icon: Award,
+    icon: Medal,
     label: "My Certificates",
     href: "/certificates",
   },
@@ -23,7 +23,7 @@ const guestRoutes = [
 
 const teacherRoutes = [
   {
-    icon: List,
+    icon: Library,
     label: "Courses",
     href: "/teacher/courses",
   },

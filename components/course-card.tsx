@@ -26,36 +26,59 @@ export const CourseCard = ({
 }: CourseCardProps) => {
   return (
     <Link href={`/courses/${id}`}>
-      <div className="group-hover:shadow-sm transition overflow-hidden border rounded-lg p-3 h-full">
-        <div className="relative w-full aspect-video rounded-md overflow-hidden">
-          <Image fill className="object-cover" alt={title} src={imageUrl} />
-        </div>
-        <div className="flex flex-col pt-2">
-          <div className="text-lg md:text-base font-medium group-hover:text-sky-700 transition line-clamp-2">
-            {title}
+      <div className="group h-full relative bg-white border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-blue-100 flex flex-col">
+        {/* Imagine și overlay */}
+        <div className="relative w-full aspect-[4/3]">
+          <Image
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            alt={title}
+            src={imageUrl}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+          {/* Badge categorie */}
+          <div className="absolute top-4 left-4">
+            <span className="px-3 py-1 bg-white/95 rounded-full text-xs font-medium text-gray-700 shadow-sm">
+              {category}
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground">{category}</p>
-          <div className="my-3 flex items-center gap-x-2 text-sm md:text-xs">
-            <div className="flex items-center gap-x-1 text-slate-500">
+
+          {/* Preț */}
+          {!progress && (
+            <div className="absolute top-4 right-4">
+              <span className="px-3 py-1 bg-blue-500/95 text-white rounded-full text-xs font-medium shadow-sm">
+                {formatPrice(price)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Conținut */}
+        <div className="flex flex-col flex-grow p-4">
+          <h3 className="text-lg font-semibold text-gray-800 line-clamp-2 mb-3 group-hover:text-blue-600 transition-colors">
+            {title}
+          </h3>
+
+          <div className="mt-auto">
+            <div className="flex items-center gap-1 text-sm text-gray-500">
               <IconBadge size="sm" icon={BookOpen} />
               <span>
                 {chaptersLength} {chaptersLength === 1 ? "Chapter" : "Chapters"}
               </span>
             </div>
-          </div>
-          {progress !== null ? (
-            <div>
-             <CourseProgress
-             size="sm"
-             variant={progress === 100 ? "success" : "default"}
-             value={progress}
-             />
+
+            {/* Bară de progres */}
+            {progress !== null && (
+              <div className="mt-4">
+                <CourseProgress
+                  size="sm"
+                  variant={progress === 100 ? "success" : "default"}
+                  value={progress}
+                />
               </div>
-          ) : (
-            <p className="text-md md:text-sm font-medium text-slate-700">
-              {formatPrice(price)}
-            </p>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </Link>

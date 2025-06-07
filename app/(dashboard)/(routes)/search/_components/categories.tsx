@@ -2,29 +2,29 @@
 
 import { Category } from "@prisma/client";
 import {
-  FcEngineering,
-  FcFilmReel,
-  FcMultipleDevices,
-  FcMusic,
-  FcCamera,
-  FcSalesPerformance,
-  FcSportsMode,
-} from "react-icons/fc";
-import { IconType } from "react-icons/lib";
+  Music,
+  Dumbbell,
+  Code,
+  Camera,
+  Video,
+  Wrench,
+  Calculator,
+} from "lucide-react";
 import { CategoryItem } from "./category-item";
+
 interface CategoriesProps {
   items: Category[];
 }
 
-const iconMap: Record<Category["name"], IconType> = {
-  Music: FcMusic,
-  Fitness: FcSportsMode,
-  "Computer Science": FcMultipleDevices,
-  Photography: FcCamera,
-  Filming: FcFilmReel,
-  "Electrical Engineering": FcEngineering,
-  Accounting: FcSalesPerformance,
-};
+const iconMap = {
+  Music: Music,
+  Fitness: Dumbbell,
+  "Computer Science": Code,
+  Photography: Camera,
+  Filming: Video,
+  "Electrical Engineering": Wrench,
+  Accounting: Calculator,
+} as Record<string, any>;
 
 export const Categories = ({ items }: CategoriesProps) => {
   return (

@@ -14,8 +14,8 @@ interface CoursesListProps {
 
 export const CoursesList = ({ items }: CoursesListProps) => {
   return (
-    <div>
-      <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
+    <div className="space-y-8">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {items.map((item) => (
           <CourseCard
             key={item.id}
@@ -30,8 +30,16 @@ export const CoursesList = ({ items }: CoursesListProps) => {
         ))}
       </div>
       {items.length === 0 && (
-        <div className="text-center text-sm text-muted-foreground mt-10">
-          No courses found
+        <div className="text-center p-8 rounded-2xl bg-slate-50/50 border border-slate-100">
+          <div className="max-w-md mx-auto">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Nu s-au găsit cursuri
+            </h3>
+            <p className="text-gray-500">
+              Încercați să modificați criteriile de căutare sau reveniți mai
+              târziu pentru cursuri noi
+            </p>
+          </div>
         </div>
       )}
     </div>
