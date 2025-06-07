@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import axios from "axios";
@@ -17,6 +17,8 @@ import {
   ExternalLinkIcon,
   ArrowRightIcon,
 } from "lucide-react";
+import { PDFDownloadLink } from "@react-pdf/renderer";
+import CertificatePDF from "@/components/CertificatePDF";
 
 // Importăm ABI-ul direct aici pentru a evita problemele cu fs
 const CERTIFICATE_ABI = [
@@ -70,6 +72,7 @@ interface Certificate {
 
 export default function CertificatesClientPage() {
   const { userId } = useAuth();
+  const { user } = useUser();
   const searchParams = useSearchParams();
   const highlightCourseId = searchParams.get("highlight");
 
@@ -1363,6 +1366,42 @@ export default function CertificatesClientPage() {
                       ? "Se verifică..."
                       : "Verifică pe Blockchain"}
                   </Button>
+
+                  <PDFDownloadLink
+                    document={
+                      <CertificatePDF
+                        studentName={`${user?.firstName || ""} ${
+                          user?.lastName || ""
+                        }`}
+                        courseName={
+                          selectedCertificate.courseDetails?.title ||
+                          selectedCertificate.courseId
+                        }
+                        date={new Date(
+                          selectedCertificate.timestamp * 1000
+                        ).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                        certificateId={`${selectedCertificate.courseId}-${selectedCertificate.userId}`}
+                        transactionHash={selectedCertificate.blockchainTx}
+                      />
+                    }
+                    fileName={`certificate-${selectedCertificate.courseId}.pdf`}
+                  >
+                    {({ blob, url, loading, error }) => (
+                      <Button
+                        disabled={loading}
+                        variant="outline"
+                        className="bg-green-600 text-white hover:bg-green-700"
+                      >
+                        {loading
+                          ? "Se generează PDF..."
+                          : "Descarcă Certificat PDF"}
+                      </Button>
+                    )}
+                  </PDFDownloadLink>
 
                   {selectedCertificate.courseDetails?.id &&
                     selectedCertificate.courseDetails?.id !== "testCourse" && (

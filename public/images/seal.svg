@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cercul exterior -->
+  <circle cx="100" cy="100" r="95" fill="none" stroke="#1a365d" stroke-width="2"/>
+  
+  <!-- Cercul interior -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#1a365d" stroke-width="1"/>
+  
+  <!-- Text circular superior -->
+  <path id="upperArc" d="M 30,100 A 70,70 0 0 1 170,100" fill="none"/>
+  <text>
+    <textPath href="#upperArc" startOffset="50%" text-anchor="middle" font-family="Times New Roman" font-size="14" fill="#1a365d">
+      QUICKLEARN
+    </textPath>
+  </text>
+  
+  <!-- Text circular inferior -->
+  <path id="lowerArc" d="M 170,100 A 70,70 0 0 1 30,100" fill="none"/>
+  <text>
+    <textPath href="#lowerArc" startOffset="50%" text-anchor="middle" font-family="Times New Roman" font-size="14" fill="#1a365d">
+      CERTIFICATE OF EXCELLENCE
+    </textPath>
+  </text>
+  
+  <!-- Logo central -->
+  <g transform="translate(100,100) scale(0.4)">
+    <path d="M-50,-50 L50,-50 L0,50 Z" fill="#1a365d"/>
+    <circle cx="0" cy="-20" r="15" fill="#fff"/>
+  </g>
+  
+  <!-- Elemente decorative -->
+  <g transform="translate(100,100)">
+    <circle cx="0" cy="0" r="60" fill="none" stroke="#1a365d" stroke-width="0.5" stroke-dasharray="4,4"/>
+    <circle cx="0" cy="0" r="70" fill="none" stroke="#1a365d" stroke-width="0.5" stroke-dasharray="4,4"/>
+  </g>
+</svg> 
