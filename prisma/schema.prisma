@@ -32,6 +32,7 @@ model Course {
   updatedAt    DateTime      @updatedAt
   chapters     Chapter[]
   certificates Certificate[]
+  finalQuiz    FinalQuiz?
 
   @@index([categoryId])
   @@fulltext([title])
@@ -142,4 +143,46 @@ model Certificate {
 
   @@unique([courseId, userId])
   @@index([userId])
+}
+
+model FinalQuiz {
+  id        String         @id @default(uuid()) @map("_id")
+  courseId  String         @unique
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  minScore  Int
+  questions QuizQuestion[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model QuizQuestion {
+  id          String       @id @default(uuid()) @map("_id")
+  text        String
+  finalQuizId String
+  finalQuiz   FinalQuiz    @relation(fields: [finalQuizId], references: [id], onDelete: Cascade)
+  answers     QuizAnswer[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model QuizAnswer {
+  id         String       @id @default(uuid()) @map("_id")
+  text       String
+  isCorrect  Boolean
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model FinalQuizResult {
+  id        String   @id @default(uuid()) @map("_id")
+  userId    String
+  courseId  String
+  score     Int
+  isPassed  Boolean
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
 }

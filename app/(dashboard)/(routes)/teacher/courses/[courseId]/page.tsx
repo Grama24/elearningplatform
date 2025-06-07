@@ -18,6 +18,9 @@ import { AttachmentForm } from "./_components/attachment-form";
 import { ChaptersForm } from "./_components/chapters-form";
 import { Banner } from "@/components/banner";
 import { Actions } from "./_components/actions";
+import { FinalQuizForm } from "./_components/final-quiz-form";
+import { FinalQuizDisplay } from "./_components/final-quiz-display";
+
 const CourseIdPage = async ({ params }: { params: { courseId: string } }) => {
   const { userId } = auth();
 
@@ -129,6 +132,20 @@ const CourseIdPage = async ({ params }: { params: { courseId: string } }) => {
                 <h2 className="text-xl">Resources & Attachments</h2>
               </div>
               <AttachmentForm initialData={course} courseId={course.id} />
+            </div>
+            <div>
+              <div className="flex items-center gap-x-2">
+                <IconBadge icon={ListChecks} />
+                <h2 className="text-xl">Quiz Final</h2>
+              </div>
+              <FinalQuizForm courseId={course.id} />
+            </div>
+            <div>
+              <div className="flex items-center gap-x-2">
+                <IconBadge icon={ListChecks} />
+                <h2 className="text-xl">Afișare Quiz Final</h2>
+              </div>
+              <FinalQuizDisplay courseId={course.id} />
             </div>
           </div>
         </div>

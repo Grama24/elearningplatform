@@ -3,6 +3,7 @@
 import { Chapter, Course, UserProgress } from "@prisma/client";
 import CourseSidebarItem from "./course-sidebar-item";
 import { CourseProgress } from "@/components/course-progress";
+import { useRouter } from "next/navigation";
 
 interface CourseSideBarClientProps {
   course: Course & {
@@ -12,13 +13,41 @@ interface CourseSideBarClientProps {
   };
   progressCount: number;
   isPurchased: boolean;
+  finalQuiz?: any;
 }
 
 const CourseSideBarClient = ({
   course,
   progressCount,
   isPurchased,
+  finalQuiz,
 }: CourseSideBarClientProps) => {
+  const router = useRouter();
+
+  const allChaptersCompleted = course.chapters.every(
+    (chapter) => chapter.userProgress?.[0]?.isCompleted
+  );
+
+  const hasFinalQuiz = finalQuiz || course.finalQuiz;
+
+  console.log("DEBUG SIDEBAR:", {
+    allChaptersCompleted,
+    hasFinalQuiz,
+    finalQuiz,
+    courseFinalQuiz: course.finalQuiz,
+    chapters: course.chapters.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      isCompleted: ch.userProgress?.[0]?.isCompleted,
+    })),
+  });
+
+  const handleQuizClick = () => {
+    if (allChaptersCompleted) {
+      router.push(`/courses/${course.id}/final-quiz`);
+    }
+  };
+
   return (
     <div className="h-full border-r flex flex-col overflow-y-auto shadow-sm">
       <div className="p-8 flex flex-col border-b">
@@ -40,6 +69,17 @@ const CourseSideBarClient = ({
             isLocked={!chapter.isFree && !isPurchased}
           />
         ))}
+        {hasFinalQuiz && allChaptersCompleted && (
+          <CourseSidebarItem
+            key="final-quiz"
+            id="final-quiz"
+            label="Quiz Final"
+            isCompleted={false}
+            courseId={course.id}
+            isLocked={false}
+            onClick={handleQuizClick}
+          />
+        )}
       </div>
     </div>
   );

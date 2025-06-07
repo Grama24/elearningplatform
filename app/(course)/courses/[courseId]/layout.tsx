@@ -47,6 +47,15 @@ const CourseLayout = async ({
           position: "asc",
         },
       },
+      finalQuiz: {
+        include: {
+          questions: {
+            include: {
+              answers: true,
+            },
+          },
+        },
+      },
     },
   });
 

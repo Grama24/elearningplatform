@@ -59,7 +59,47 @@ const CourseIdPage = async ({
         },
       },
       category: true,
+      finalQuiz: {
+        include: {
+          questions: {
+            include: {
+              answers: true,
+            },
+          },
+        },
+      },
     },
+  });
+
+  // Verificăm direct quiz-ul
+  const quiz = await db.finalQuiz.findUnique({
+    where: {
+      courseId: params.courseId,
+    },
+    include: {
+      questions: {
+        include: {
+          answers: true,
+        },
+      },
+    },
+  });
+
+  console.log("DEBUG PAGE - QUIZ:", {
+    quiz,
+    hasQuiz: !!quiz,
+  });
+
+  console.log("DEBUG PAGE - COURSE:", {
+    courseId: params.courseId,
+    hasFinalQuiz: !!course?.finalQuiz,
+    finalQuiz: course?.finalQuiz,
+    courseKeys: course ? Object.keys(course) : [],
+    chapters: course?.chapters.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      isCompleted: ch.userProgress?.[0]?.isCompleted,
+    })),
   });
 
   if (!course) {
@@ -122,6 +162,31 @@ const CourseIdPage = async ({
       }
     }
   }
+
+  // Verificăm dacă există quiz final și dacă studentul l-a trecut
+  let hasPassedFinalQuiz = true;
+  if (course.finalQuiz) {
+    const quizResult = await db.finalQuizResult.findUnique({
+      where: {
+        userId_courseId: {
+          userId,
+          courseId: params.courseId,
+        },
+      },
+    });
+    hasPassedFinalQuiz = !!quizResult?.isPassed;
+  }
+
+  // Adăugăm quiz-ul la curs dacă există
+  const courseWithQuiz = {
+    ...course,
+    finalQuiz: quiz,
+  };
+
+  console.log("DEBUG PAGE - FINAL:", {
+    hasFinalQuiz: !!courseWithQuiz.finalQuiz,
+    finalQuiz: courseWithQuiz.finalQuiz,
+  });
 
   return (
     <div className="h-full">
@@ -193,7 +258,7 @@ const CourseIdPage = async ({
                 <div className="flex flex-col gap-4">
                   <CourseProgress variant="success" value={progressCount} />
 
-                  {progressCount === 100 && (
+                  {progressCount === 100 && hasPassedFinalQuiz && (
                     <div className="flex flex-col gap-4">
                       <CourseCompleteButton
                         courseId={course.id}
@@ -218,6 +283,7 @@ const CourseIdPage = async ({
           </div>
         </div>
       </main>
+      <CourseSideBar course={courseWithQuiz} progressCount={progressCount} />
     </div>
   );
 };
